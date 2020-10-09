@@ -13,6 +13,8 @@ type decElementState struct {
 	lshift, numValueBits uint8
 }
 
+//Decoder reads a compressed data stream and allows iterating over the
+//resulting decoded sequence of Vec64
 type Decoder struct {
 	reader  *bitio.Reader
 	state   []decElementState
@@ -20,6 +22,7 @@ type Decoder struct {
 	first   bool
 }
 
+//NewDecoder allocates and initializes a new Decoder
 func NewDecoder(src io.Reader, span int) *Decoder {
 	return &Decoder{
 		state:   make([]decElementState, span),
@@ -29,6 +32,8 @@ func NewDecoder(src io.Reader, span int) *Decoder {
 	}
 }
 
+//Next decodes the next Vec64 element from the stream.
+//Returns false if an error happens, or end of stream is reached.
 func (dec *Decoder) Next() bool {
 	if dec.first {
 		for i := range dec.outBits {
@@ -37,7 +42,7 @@ func (dec *Decoder) Next() bool {
 			dec.state[i].prevBits = bits
 		}
 		dec.first = false
-		return true
+		return dec.reader.TryError == nil
 	}
 
 	for i := range dec.outBits {
@@ -62,9 +67,14 @@ func (dec *Decoder) Next() bool {
 		dec.state[i].prevBits = bits
 		dec.outBits[i] = bits
 	}
-	return true
+	return dec.reader.TryError == nil
 }
 
+/*
+EnumBorrow is a helper method for enumerating Vec64s into a go channel.
+
+Channel elements should be returned to the pool when no longer needed.
+*/
 func (dec *Decoder) EnumBorrow(ctx context.Context, out chan Vec64, pool *VecPool) error {
 	for dec.Next() {
 		vec := dec.Current()
@@ -82,10 +92,13 @@ func (dec *Decoder) EnumBorrow(ctx context.Context, out chan Vec64, pool *VecPoo
 	return dec.Err()
 }
 
+//Err returns the last error after calling Next.
 func (dec *Decoder) Err() error {
 	return dec.reader.TryError
 }
 
+//Current returns the last Vec64 decoded after calling Next.
+//Only valid if Next returned true.
 func (dec *Decoder) Current() Vec64 {
 	return dec.outBits
 }

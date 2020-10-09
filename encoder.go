@@ -14,6 +14,8 @@ type elementState struct {
 	lead, trail uint8
 }
 
+//Encoder stores the encoding context for compressing a sequence of
+//Vec64 to an io.Writer
 type Encoder struct {
 	writer *bitio.Writer
 	state  []elementState
@@ -28,6 +30,13 @@ const (
 	floatBitsSize    = uint8(unsafe.Sizeof(float64(0)) * 8)
 )
 
+/*
+LossyFloat64 transforms a float64 into a compress-friendly approximation.
+
+The function guarantees that abs(result - n) < maxAbsError.
+
+Under the hood, the function zero-outs as many least significant bits.
+*/
 func LossyFloat64(n float64, maxAbsError float64) float64 {
 	bits := math.Float64bits(n)
 	const bitmask uint64 = (1 << 64) - 1
@@ -52,6 +61,7 @@ func LossyFloat64(n float64, maxAbsError float64) float64 {
 	return math.Float64frombits(bits & (bitmask << i))
 }
 
+//NewEncoder allocates and initializes a new Encoder to compress sequences of Vec64
 func NewEncoder(dst io.Writer, span int) *Encoder {
 	state := make([]elementState, span)
 	for i := range state {
@@ -64,6 +74,12 @@ func NewEncoder(dst io.Writer, span int) *Encoder {
 	}
 }
 
+/*
+Put encodes a Vec64 into a compressed, variable bits sequence
+and writes the result to the underlying stream.
+
+Put will panic if the given Vec64 has a different span than the encoder.
+*/
 func (enc *Encoder) Put(vec Vec64) error {
 	if len(vec) != len(enc.state) {
 		panic("Wrong vector size")
@@ -122,18 +138,25 @@ func (enc *Encoder) Put(vec Vec64) error {
 	return enc.writer.TryError
 }
 
-func (enc *Encoder) PutFloat64(vec []float64) {
+//PutFloat64 is a short-hand for appending a vector of float64 to the encoder.
+func (enc *Encoder) PutFloat64(vec []float64) error {
 	sh := (*Vec64)(unsafe.Pointer(&vec))
-	enc.Put(*sh)
+	return enc.Put(*sh)
 }
 
-func (enc *Encoder) PutUint64(vec []uint64) {
-	enc.Put([]uint64(vec))
+//PutUint64 is a short-hand for appending a vector of uint64 to the encoder.
+func (enc *Encoder) PutUint64(vec []uint64) error {
+	return enc.Put(Vec64(vec))
 }
 
+//Close appends an EOF bit sequence and
+//flushes any remaining buffered data to the underlying stream
 func (enc *Encoder) Close() error {
 	const numControlBits = 2
 	const eofBits = eofNumValueBits | (eofShiftBits << numValueBitsSize)
 	enc.writer.TryWriteBits(eofBits, numControlBits+shiftSize+numValueBitsSize)
-	return enc.writer.Close()
+	if err := enc.writer.Close(); err != nil {
+		return err
+	}
+	return enc.writer.TryError
 }
