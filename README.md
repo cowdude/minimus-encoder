@@ -1,6 +1,27 @@
 # minimus-encoder
 
-Data stream encoder for compressing sequences of floats/integer values to bits
+
+## Project description
+
+Data stream encoder/decoder for compressing sequences of float/integer values to bits.
+
+It focuses on encoding vectors of elements, i.e. interleaved series.
+
+Heavily inspired by [Facebook's Gorilla TSDB paper](http://www.vldb.org/pvldb/vol8/p1816-teller.pdf).
+
+Shipped with a lossy float64 transform function, allowing more efficient (but lossy) storage. This module can still be used for lossless encoding.
+
+Thanks [icza](https://github.com/icza) for his `bitio` library, heavily used in this project.
+
+
+## Current status
+
+The project is quite young and could definitely use more testing and eventually some optimizations. I am currently using it to store large amounts of fixed-interval time-series on the cloud.
+
+There is currently an issue with values that rapidly oscillates around zero (i.e. flipping the float64's sign bit too often). In case you would like to use this project, it is best advised to apply a bias to your inputs in order to avoid flipping the sign bit too often.
+
+Pull requests and suggestions are welcome, feel free to open an issue.
+
 
 ## Example
 
