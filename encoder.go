@@ -2,7 +2,6 @@ package minimus
 
 import (
 	"io"
-	"math"
 	"math/bits"
 	"unsafe"
 
@@ -29,37 +28,6 @@ const (
 	eofNumValueBits  = (1 << numValueBitsSize) - 1
 	floatBitsSize    = uint8(unsafe.Sizeof(float64(0)) * 8)
 )
-
-/*
-LossyFloat64 transforms a float64 into a compress-friendly approximation.
-
-The function guarantees that abs(result - n) < maxAbsError.
-
-Under the hood, the function zero-outs as many least significant bits.
-*/
-func LossyFloat64(n float64, maxAbsError float64) float64 {
-	bits := math.Float64bits(n)
-	const bitmask uint64 = (1 << 64) - 1
-	const maxBits = 52
-
-	//binary search for most trailing bits to zero-out
-	var (
-		i uint8
-		j uint8 = maxBits - 1
-	)
-	for i < j {
-		h := (i + j) >> 1 //no possible overflow
-		np := math.Float64frombits(bits & (bitmask << (h + 1)))
-
-		// i ≤ h < j
-		if math.Abs(np-n) < maxAbsError {
-			i = h + 1 // preserves f(i-1) == false
-		} else {
-			j = h // preserves f(j) == true
-		}
-	}
-	return math.Float64frombits(bits & (bitmask << i))
-}
 
 //NewEncoder allocates and initializes a new Encoder to compress sequences of Vec64
 func NewEncoder(dst io.Writer, span int) *Encoder {
