@@ -102,10 +102,11 @@ func testCompressionRatio(t *testing.T, ds [][]float64, maxBPS float64, maxError
 	span := len(ds[0])
 	var buf bytes.Buffer
 	enc := NewEncoder(&buf, span)
+	var hint BitHint
 	for _, x := range ds {
 		lossy := make([]float64, len(x))
 		for i, n := range x {
-			lossy[i] = LossyFloat64(n, maxError)
+			lossy[i], hint = LossyFloat64(n, maxError, hint)
 		}
 		enc.PutFloat64(lossy)
 	}

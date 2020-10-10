@@ -39,10 +39,11 @@ func BenchmarkEncodingLossy(b *testing.B) {
 	enc := NewEncoder(&benchBuf, spanTest)
 	defer enc.Close()
 	var vec [spanTest]float64
+	var hint BitHint
 	for i := 0; i < b.N; i++ {
 		f := benchData[i%len(benchData)]
 		for j := range vec {
-			vec[j] = LossyFloat64(f[j], 1e-10)
+			vec[j], hint = LossyFloat64(f[j], 1e-10, hint)
 		}
 		enc.PutFloat64(vec[:])
 	}
