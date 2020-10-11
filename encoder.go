@@ -31,15 +31,19 @@ const (
 
 //NewEncoder allocates and initializes a new Encoder to compress sequences of Vec64
 func NewEncoder(dst io.Writer, span int) *Encoder {
-	state := make([]elementState, span)
-	for i := range state {
-		state[i] = elementState{lead: 0xFF}
+	enc := new(Encoder)
+	enc.state = make([]elementState, span)
+	enc.Reset(dst)
+	return enc
+}
+
+//Reset the internal state of the encoder to write to a new given stream.
+func (enc *Encoder) Reset(dst io.Writer) {
+	for i := range enc.state {
+		enc.state[i] = elementState{lead: 0xFF}
 	}
-	return &Encoder{
-		writer: bitio.NewWriter(dst),
-		first:  true,
-		state:  state,
-	}
+	enc.writer = bitio.NewWriter(dst)
+	enc.first = true
 }
 
 /*
