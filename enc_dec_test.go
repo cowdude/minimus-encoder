@@ -2,6 +2,7 @@ package minimus
 
 import (
 	"bytes"
+	"io"
 	"math"
 	"math/rand"
 	"testing"
@@ -63,6 +64,23 @@ func init() {
 	}
 }
 
+func checkDecodedFloats(t *testing.T, ds, decoded [][]float64) {
+	if len(ds) != len(decoded) {
+		t.Logf("Length mismatch: %v instead of %v", len(decoded), len(ds))
+		t.FailNow()
+	}
+	for i := range ds {
+		for j := 0; j < spanTest; j++ {
+			x, y := ds[i][j], decoded[i][j]
+			if x != y && !math.IsNaN(x) && !math.IsNaN(y) {
+				t.Logf("element mistmatch at %v;%v\n", i, j)
+				t.Fail()
+				break
+			}
+		}
+	}
+}
+
 func testEncDecF64(t *testing.T, ds [][]float64) {
 	span := len(ds[0])
 	var buf bytes.Buffer
@@ -82,20 +100,7 @@ func testEncDecF64(t *testing.T, ds [][]float64) {
 	if dec.Err() != nil {
 		panic(dec.Err())
 	}
-	if len(ds) != len(decoded) {
-		t.Log("Length mismatch")
-		t.Fail()
-	}
-	for i := range ds {
-		for j := 0; j < spanTest; j++ {
-			x, y := ds[i][j], decoded[i][j]
-			if x != y && !math.IsNaN(x) && !math.IsNaN(y) {
-				t.Logf("element mistmatch at %v;%v\n", i, j)
-				t.Fail()
-				break
-			}
-		}
-	}
+	checkDecodedFloats(t, ds, decoded)
 }
 
 func testCompressionRatio(t *testing.T, ds [][]float64, maxBPS float64, maxError float64) float64 {
@@ -143,4 +148,85 @@ func TestCompressedBeatsPlainSize(t *testing.T) {
 func TestConstDataCompressionRatio(t *testing.T) {
 	ds := constData()
 	testCompressionRatio(t, ds.ds, 1.1, 0)
+}
+
+func TestConcatOutput(t *testing.T) {
+	ds := expRandData().ds
+	parts := [...][][]float64{
+		ds[:len(ds)/2],
+		ds[len(ds)/2:],
+	}
+
+	var buf bytes.Buffer
+	span := len(ds[0])
+
+	for _, part := range parts {
+		enc := NewEncoder(&buf, span)
+		for _, x := range part {
+			enc.PutFloat64(x)
+		}
+		enc.Close()
+	}
+
+	dec := NewDecoder(&buf, span)
+	var decoded [][]float64
+	for dec.Next() {
+		vec := dec.Current().Float64()
+		cpy := make([]float64, len(vec))
+		copy(cpy, vec)
+		decoded = append(decoded, cpy)
+	}
+	if err := dec.Err(); err != nil {
+		panic(err)
+	}
+	checkDecodedFloats(t, ds, decoded)
+}
+
+func TestDecodeEmptyStream(t *testing.T) {
+	var buf bytes.Buffer
+	dec := NewDecoder(&buf, 42)
+	if dec.Next() {
+		t.FailNow()
+	}
+	if err := dec.Err(); err != nil {
+		t.Logf("Err not nil: %v", err)
+		t.FailNow()
+	}
+}
+
+func TestDecodePartialFirstVec(t *testing.T) {
+	var buf bytes.Buffer
+	//append first value (64bits)
+	buf.Write([]byte{0x12, 0x34, 0x45, 0x78, 0x12, 0x34, 0x45, 0x78})
+	//span is 2, but buffer only has a single element
+	dec := NewDecoder(&buf, 2)
+	if dec.Next() {
+		t.FailNow()
+	}
+	if err := dec.Err(); err != io.EOF {
+		t.Logf("Err not EOF: %v", err)
+		t.FailNow()
+	}
+}
+
+func TestDecodePartialNextVec(t *testing.T) {
+	var buf bytes.Buffer
+	//append first values (64bits)
+	const span = 10
+	for i := 0; i < span; i++ {
+		buf.Write([]byte{0x12, 0x34, 0x45, 0x78, 0x12, 0x34, 0x45, 0x78})
+	}
+	//next vector (repeat last, missing 2 elements)
+	buf.Write([]byte{0xFF})
+	dec := NewDecoder(&buf, span)
+	if !dec.Next() {
+		t.FailNow()
+	}
+	if dec.Next() {
+		t.FailNow()
+	}
+	if err := dec.Err(); err != io.EOF {
+		t.Logf("Err not EOF: %v", err)
+		t.FailNow()
+	}
 }
